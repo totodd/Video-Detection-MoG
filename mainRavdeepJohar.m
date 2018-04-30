@@ -5,17 +5,41 @@ close all;
 % Author: Ravdeep Johar
 % Please input any avi file below % 
 
-Video = input('Enter the name of the video file:', 's');
-if isempty(Video)
-    error('myApp:argChk', 'You did not enter a video file!')
+% Video = input('Enter the name of the video file:', 's');
+% if isempty(Video)
+%     error('myApp:argChk', 'You did not enter a video file!')
+% end
+
+
+% inputVideo = aviread(Video);
+v = VideoReader('sample.mp4');
+% currAxes = axes;
+% while hasFrame(v)
+%     vidFrame = readFrame(v);
+%     image(vidFrame, 'Parent', currAxes);
+%     currAxes.Visible = 'off';
+%     pause(1/v.FrameRate);
+% end
+
+vidWidth = v.Width;
+vidHeight = v.Height;
+
+mov = struct('cdata',zeros(vidHeight,vidWidth,3,'uint8'),...
+    'colormap',[]);
+
+i = 1;
+while hasFrame(v)
+    mov(i).cdata = readFrame(v,'native');
+    i = i+1;
 end
-
-
-inputVideo = aviread(Video);
+% hf = figure;
+% set(hf,'position',[150 150 vidWidth vidHeight]);
+% 
+% movie(hf,mov,1,xyloObj.FrameRate);
 
 %  frame size variables 
 
-fr = inputVideo(1).cdata;           % read in 1st frame as background frame
+fr = mov(1).cdata;           % read in 1st frame as background frame
 fr_bw = rgb2gray(fr);               % convert background to greyscale
 fr_size = size(fr);                 % get the size of the frame
 width = fr_size(2);                 % get the width of the frame
@@ -25,12 +49,12 @@ background = zeros(height, width);       % initialize variable to store backgrou
 
 % 
 
-K = 3;                                           % number of gaussian components (can be upto 3-5)
+K = 5;                                           % number of gaussian components (can be upto 3-5)
 M = 3;                                           % number of background components
 D = 2.5;                                         % positive deviation threshold
 alpha = 0.01;                                    % learning rate (between 0 and 1) (from paper 0.01)
 foregroundThreshold = 0.25;                      % foreground threshold (0.25 or 0.75 in paper)
-sd_initial = 6;                                  % initial standard deviation (for new components) var = 36 in paper
+sd_initial = 36;                                  % initial standard deviation (for new components) var = 36 in paper
 weight = zeros(height,width,K);                  % initialize weights array
 mean = zeros(height,width,K);                    % pixel means
 standardDeviation = zeros(height,width,K);       % pixel standard deviations
@@ -39,7 +63,7 @@ learningRate = alpha/(1/K);                      % initial p variable (used to u
 rankComponent = zeros(1,K);                      % rank of components (w/sd)
 
 
-% initialize components for the  means and weights 
+% initialize components for the  means and weights [each pixel has a Gaussian Distribution]
 
 pixel_depth = 8;                        % 8-bit resolution
 pixel_range = 2^pixel_depth -1;         % pixel range (# of possible values)
@@ -58,10 +82,14 @@ end
 
 % Applying the proposed algorithm to the video
 
-for n = 1:length(inputVideo)
-    % reading the frames.
-    fr = inputVideo(n).cdata;  
-    % converting the frames to grayscale.
+frameNumber = 70;
+foreground_out = zeros(height, width, frameNumber);
+
+% for each frame "n"
+for n = 1:frameNumber
+    % reading the frame.
+    fr = mov(n).cdata;  
+    % converting the frame to grayscale.
     fr_bw = rgb2gray(fr);       
     
     % calculating the difference of each pixel values from mean.
@@ -70,10 +98,14 @@ for n = 1:length(inputVideo)
     end
      
     % update gaussian components for each pixel values.
+    
+    % for each pixel 
     for i=1:height
         for j=1:width
             
             match = 0; % its changed to 1 if the component is matched
+            
+            % for each component
             for k=1:K  
                 % pixel matches component
                 if (abs(diffFromMean(i,j,k)) <= D*standardDeviation(i,j,k))       
@@ -161,24 +193,47 @@ for n = 1:length(inputVideo)
     closedFrame=imclose(foreground,SE);
     
     % Plotting the foreground , background , original video and the morphed
-    % video on the screen.
-    figure(1),
-    subplot(4,1,1),imshow(fr), title('Original Video');
-    subplot(4,1,2),imshow(uint8(background)), title('Background Model');
-    subplot(4,1,3),imshow(uint8(foreground)) , title('Foreground( Moving Objects )');
-    subplot(4,1,4),imshow(uint8(closedFrame)) , title('After Morphological operation');
+%     % video on the screen.
+%     figure(1),
+%     subplot(4,1,1),imshow(fr,[]), title('Original Video');
+%     subplot(4,1,2),imshow(uint8(background)), title('Background Model');
+%     subplot(4,1,3),imshow(uint8(foreground)) , title('Foreground( Moving Objects )');
+%     subplot(4,1,4),imshow(uint8(closedFrame)) , title('After Morphological operation');
     
-    % put foreground frames into movie.
-    Movie1(n)  = im2frame(uint8(foreground),gray);    
+%     % put foreground frames into movie.
+%     hf = figure;
+%     set(hf,'position',[150 150 vidWidth vidHeight]);
+% 
+%     movie(hf,foreground,1,v.FrameRate);
+      foreground_out(:,:,n) = uint8(foreground);
+%     Movie1(n)  = im2frame(uint8(foreground),gray);    
     % put background frames into movie.
-    Movie2(n)  = im2frame(uint8(background),gray);
+%     Movie2(n)  = im2frame(uint8(background),gray);
     % put closed frames into movie.
-    Movie3(n)  = im2frame(uint8(closedFrame),gray);
+%     Movie3(n)  = im2frame(uint8(closedFrame),gray);
     
 end
-% save foreground movie as avi. 
-movie2avi(Movie1,'mixtureOfGaussiansOutput','fps',30);  
-% save background movie as avi.
-movie2avi(Movie2,'mixtureOfGaussiansBackground','fps',30); 
-% save closed movie as avi.
-movie2avi(Movie3,'mixtureOfGaussiansMorphologicalOperation','fps',30); 
+
+fps = v.FrameRate;
+
+out = VideoWriter('foreground.avi');
+out.FrameRate = fps;
+open(out);
+% while hasFrame(xyloObj)
+%     frame = readFrame(xyloObj);
+%     writeVideo(out, frame);
+% end
+
+foreground_ranged = foreground_out/255;
+
+for i = 1:frameNumber
+   writeVideo(out, foreground_ranged(:,:,i)); 
+end
+
+close(out);
+% % save foreground movie as avi. 
+% VideoWriter(Movie1,'mixtureOfGaussiansOutput','fps',30);  
+% % save background movie as avi.
+% VideoWriter(Movie2,'mixtureOfGaussiansBackground','fps',30); 
+% % save closed movie as avi.
+% VideoWriter(Movie3,'mixtureOfGaussiansMorphologicalOperation','fps',30); 
